@@ -10,9 +10,7 @@ def main():
         "friday": ["11:00 am", "4:00 pm"],
     }
     tool = AppointmentLookup(schedule)
-    robin = AppointmentAssistant(
-        "Robin", "Help people find appointment times.", tool
-    )
+    robin = AppointmentAssistant("Robin", "Help people find appointment times.", tool)
 
     print("Type a message, or type quit to stop.")
     while True:
