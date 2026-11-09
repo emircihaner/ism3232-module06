@@ -1,64 +1,111 @@
 # tests/test_chatbot.py
 from chatbot import SupportChatbot
+from mock_model import MockModel
 from order_tool import OrderLookup
 from stock_tool import StockLookup
 
 
+class SilentModel:
+    """A model that never has an answer. It stands in for Ollama being switched off."""
+
+    def reply(self, instructions, history):
+        return None
+
+
 def make_bot():
-    """Build a fresh chatbot with its tools for each test."""
-    orders = {"A100": "shipped", "A101": "processing"}
-    stock = {"rain jacket": 12}
+    """Build a fresh chatbot with its own tools and a mock model for each test."""
+    order_tool = OrderLookup({"A100": "shipped", "A101": "processing"})
+    stock_tool = StockLookup({"rain jacket": 12, "day pack": 0})
+    return SupportChatbot("Sunny", "Be friendly.", order_tool, stock_tool, MockModel())
+
+
+def make_bot_with_silent_model():
+    """Build a chatbot whose model never answers."""
+    order_tool = OrderLookup({"A100": "shipped", "A101": "processing"})
+    stock_tool = StockLookup({"rain jacket": 12, "day pack": 0})
     return SupportChatbot(
-        "Sunny", "Be friendly.", OrderLookup(orders), StockLookup(stock)
+        "Sunny", "Be friendly.", order_tool, stock_tool, SilentModel()
     )
 
 
-def test_count_user_messages():
+def test_chatbot_initialization():
+    bot = make_bot()
+    assert bot.name == "Sunny"
+    assert bot.history == []
+
+
+def test_respond_records_history():
     bot = make_bot()
     bot.respond("hello")
-    bot.respond("Where is order A100?")
-    assert bot.count_user_messages() == 2
+    assert len(bot.history) == 2
+    assert bot.history[0]["role"] == "user"
+    assert bot.history[1]["role"] == "assistant"
 
 
-def test_stock_tool():
+def test_needs_human_handoff():
+    bot = make_bot()
+    reply = bot.respond("Please change my shipping address")
+    assert "human agent" in reply
+
+
+def test_order_lookup_shipped():
+    bot = make_bot()
+    reply = bot.respond("Where is order A100?")
+    assert reply == "Order A100 is shipped."
+
+
+def test_order_lookup_processing():
+    bot = make_bot()
+    reply = bot.respond("Where is order A101?")
+    assert reply == "Order A101 is processing."
+
+
+def test_order_lookup_not_found():
+    bot = make_bot()
+    reply = bot.respond("Where is order Z999?")
+    assert "not found" in reply
+
+
+def test_stock_lookup_available():
     bot = make_bot()
     reply = bot.respond("Is the rain jacket in stock?")
     assert "12" in reply
 
 
-def test_respond_records_both_messages():
+def test_stock_lookup_out_of_stock():
     bot = make_bot()
-    bot.respond("Hello")
-    assert len(bot.history) == 2
+    reply = bot.respond("Is the day pack in stock?")
+    assert "0" in reply
 
 
-def test_order_question_uses_the_tool():
+def test_stock_lookup_unknown_item():
     bot = make_bot()
-    reply = bot.respond("Where is order A100?")
-    assert "shipped" in reply
+    reply = bot.respond("Is the umbrella in stock?")
+    assert "do not carry" in reply
 
 
-def test_order_question_without_an_id_asks_for_one():
+def test_multiple_turns_grow_history():
     bot = make_bot()
-    reply = bot.respond("Where is my order?")
-    assert "ID" in reply or "order" in reply.lower()
+    bot.respond("hello")
+    bot.respond("Where is order A100?")
+    assert len(bot.history) == 4
 
 
-def test_address_change_goes_to_a_human():
+def test_other_messages_go_to_the_model():
     bot = make_bot()
-    reply = bot.respond("Please change my address.")
-    assert "human" in reply.lower() or "desk" in reply.lower()
+    assert bot.respond("hello") == "Hello! How can I help you today?"
 
 
-def test_unknown_request_gets_a_safe_reply():
-    bot = make_bot()
-    reply = bot.respond("What is the meaning of life?")
-    assert len(reply) > 0
+def test_safe_reply_when_the_model_has_no_answer():
+    bot = make_bot_with_silent_model()
+    assert "try again" in bot.respond("hello")
 
 
-def test_two_chatbots_keep_separate_histories():
-    first = make_bot()
-    second = make_bot()
-    first.respond("Hello")
-    assert len(first.history) == 2
-    assert len(second.history) == 0
+def test_order_rule_does_not_need_the_model():
+    bot = make_bot_with_silent_model()
+    assert bot.respond("Where is order A100?") == "Order A100 is shipped."
+
+
+def test_handoff_rule_does_not_need_the_model():
+    bot = make_bot_with_silent_model()
+    assert "human" in bot.respond("Please change my shipping address")

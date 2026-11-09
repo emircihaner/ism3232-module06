@@ -1,37 +1,41 @@
 # main.py
 # Author: [Emir Cihaner]
-
 from chatbot import SupportChatbot
+from ollama_model import OllamaModel
 from order_tool import OrderLookup
 from stock_tool import StockLookup
 
+MODEL_NAME = "granite4.1:3b"
 
-def make_bot():
-    orders = {"A100": "shipped", "A101": "processing"}
-    stock = {"rain jacket": 12}
-    return SupportChatbot(
-        "Sunny",
-        "You are cheerful and brief.",
-        OrderLookup(orders),
-        StockLookup(stock),
-    )
+INSTRUCTIONS = """You are Sunny, a support assistant for Bayside Outfitters.
+Answer in one short sentence.
+Store hours are 10 am to 7 pm every day.
+Returns are accepted within 30 days with a receipt.
+Only state facts that appear in these instructions.
+If you do not know, say you do not know and offer to pass the customer to a human agent."""
 
+ORDERS = {
+    "A100": "shipped",
+    "A101": "processing",
+    "A102": "delivered",
+}
 
-def main():
-    bot = make_bot()
-    print("Type a message, or type quit to stop.")
-    while True:
-        try:
-            user_input = input("You: ")
-        except EOFError:
-            break
-        if user_input.strip().lower() == "quit":
-            break
-        reply = bot.respond(user_input)
-        print(f"{bot.name}: {reply}")
+STOCK = {
+    "rain jacket": 12,
+    "day pack": 0,
+    "trail hat": 5,
+}
 
-    print(f"Messages in this conversation: {len(bot.history)}")
-
+order_tool = OrderLookup(ORDERS)
+stock_tool = StockLookup(STOCK)
+model = OllamaModel(MODEL_NAME)
+bot = SupportChatbot("Sunny", INSTRUCTIONS, order_tool, stock_tool, model)
 
 if __name__ == "__main__":
-    main()
+    print("Type a message, or type quit to stop.")
+    user_message = input("You: ")
+    while user_message != "quit":
+        print(f"{bot.name}: {bot.respond(user_message)}")
+        user_message = input("You: ")
+
+    print(f"Messages in this conversation: {len(bot.history)}")
